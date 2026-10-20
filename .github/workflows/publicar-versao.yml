@@ -1,0 +1,38 @@
+# Publica uma versão nova do TeclaCard sem precisar de token pessoal.
+# O instalador chega numa branch "envio-vX.Y.Z" dividido em partes (o GitHub não aceita arquivos > 100 MB),
+# aqui ele é remontado, conferido pelo sha512 do latest.yml e vira um Release deste repositório.
+# No fim a branch é apagada. O app instalado procura atualizações justamente nestes Releases.
+name: Publicar versão
+
+on:
+  push:
+    branches: ['envio-v*']
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remontar e conferir o instalador
+        run: |
+          cd envio
+          versao=$(grep '^version:' latest.yml | awk '{print $2}')
+          exe="TeclaCard-Setup-$versao.exe"
+          cat parte-* > "$exe"
+          esperado=$(grep '^sha512:' latest.yml | awk '{print $2}')
+          obtido=$(openssl dgst -sha512 -binary "$exe" | base64 -w0)
+          [ "$esperado" = "$obtido" ] || { echo "sha512 não confere"; exit 1; }
+          echo "VERSAO=$versao" >> "$GITHUB_ENV"
+          echo "EXE=$exe" >> "$GITHUB_ENV"
+      - name: Criar o Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd envio
+          gh release create "v$VERSAO" "$EXE" "$EXE.blockmap" latest.yml \
+            --repo "$GITHUB_REPOSITORY" --target main --title "TeclaCard $VERSAO" --notes-file notas.md
+      - name: Apagar a branch de envio
+        run: git push origin --delete "$GITHUB_REF_NAME"
