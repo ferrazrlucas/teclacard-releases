@@ -1,0 +1,39 @@
+# Baixa UMA VEZ as imagens das cartas de Yu-Gi-Oh! listadas em cartas/yugioh/lista.txt
+# e guarda neste repositório (o YGOPRODeck pede para não carregar as imagens direto do site deles).
+# Roda quando a lista muda, ou manualmente pela aba Actions.
+name: Imagens Yu-Gi-Oh
+
+on:
+  push:
+    paths: ['cartas/yugioh/lista.txt']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  baixar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Baixar imagens que faltam
+        run: |
+          cd cartas/yugioh
+          novas=0
+          while read -r id; do
+            id="${id//[^0-9]/}"
+            [ -z "$id" ] && continue
+            [ -s "$id.jpg" ] && continue
+            curl -fsSL --retry 3 -A "TeclaCard (jogo pessoal)" "https://images.ygoprodeck.com/images/cards/$id.jpg" -o "$id.jpg" || { rm -f "$id.jpg"; echo "falhou $id"; }
+            novas=$((novas+1))
+            sleep 0.15   # bem abaixo do limite do YGOPRODeck
+          done < lista.txt
+          echo "Imagens novas: $novas"
+          ls *.jpg | wc -l
+      - name: Guardar no repositório
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cartas/yugioh/*.jpg
+          git diff --cached --quiet || git commit -m "Imagens Yu-Gi-Oh"
+          git push
